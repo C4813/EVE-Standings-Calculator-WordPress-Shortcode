@@ -1,12 +1,18 @@
 <?php
 /*
 Plugin Name: EVE Standings Calculator
-Description: Adds a shortcode [eve_standings_calculator] to automatically calculate broker fees and reprocessing tax.
-Version: 1
+Description: Adds a shortcode [eve_standings_calculator] to calculate broker fees and reprocessing tax using standing + skill logic.
+Version: 2
 Author: C4813
 */
 
 function eve_standings_calculator_shortcode() {
+    $faction_json = file_get_contents(__DIR__ . '/factions.json');
+    $corp_faction_json = file_get_contents(__DIR__ . '/corp_to_faction.json');
+    $corp_json = file_get_contents(__DIR__ . '/corps.json');
+    $faction_skill_json = file_get_contents(__DIR__ . '/faction_skills.json');
+    $corp_skill_json = file_get_contents(__DIR__ . '/corp_skills.json');
+
     ob_start(); ?>
 
     <style>
@@ -18,11 +24,11 @@ function eve_standings_calculator_shortcode() {
             border-radius: 8px;
         }
         .eve-standings-form label {
-            display: block;
-            margin-top: 10px;
-            font-weight: bold;
-            text-align: center;
-        }
+        display: block;
+        margin-top: 10px;
+        text-align: center;
+    }
+        .eve-standings-form select,
         .eve-standings-form input[type="number"] {
             width: 200px;
             padding: 6px;
@@ -45,10 +51,6 @@ function eve_standings_calculator_shortcode() {
             border: 1px solid #ddd;
             display: inline-block;
         }
-        .skill-note {
-            font-weight: bold;
-            text-align: center;
-        }
         .divider {
             margin-top: 30px;
             border-top: 1px solid #ccc;
@@ -58,17 +60,49 @@ function eve_standings_calculator_shortcode() {
     <div class="eve-standings-form">
         <div class="eve-row">
             <div class="eve-col">
-                <label>Broker Relations Skill (0–5):</label>
-                <input type="number" id="broker_skill" min="0" max="5" step="1" value="0">
+                <label style="font-size: 18px; font-weight: bold; margin-bottom: 4px;">Skills</label>
+                <label style="font-weight: normal;">Broker Relations</label>
+                <select id="broker_skill" style="text-align-last: center;">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
 
-                <label>Connections Skill (0–5):</label>
-                <input type="number" id="connections_skill" min="0" max="5" step="1" value="0">
+                <label style="font-weight: normal;">Connections</label>
+                <select id="connections_skill" style="text-align-last: center;">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
 
-                <label>Diplomacy Skill (0–5):</label>
-                <input type="number" id="diplomacy_skill" min="0" max="5" step="1" value="0">
+                <label style="font-weight: normal;">Criminal Connections</label>
+                <select id="criminal_connections_skill" style="text-align-last: center;">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+
+                <label style="font-weight: normal;">Diplomacy</label>
+                <select id="diplomacy_skill" style="text-align-last: center;">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
             </div>
             <div class="eve-col">
-                <div class="skill-note">Market Standings &<br /> Reprocessing Tax Calculator</div>
+                <div class="output" style="font-size: 18px; font-weight: bold; margin-bottom: 4px;">Market Standings &<br /> Reprocessing Tax Calculator</div>
             </div>
         </div>
 
@@ -76,27 +110,67 @@ function eve_standings_calculator_shortcode() {
 
         <div class="eve-row" style="margin-top: 20px;">
             <div class="eve-col">
-                <label>Derived Faction Standing:</label>
-                <input type="number" id="jita_faction" step="0.01" min="-10" max="10" value="0">
-                <label>Derived Corp Standing:</label>
-                <input type="number" id="jita_corp" step="0.01" min="-10" max="10" value="0">
+                <label style="font-size: 18px; font-weight: bold; margin-bottom: 4px;">Standings</label>
+                <label style="font-weight: normal;">Faction</label>
+                    <div id="faction_display" class="output"></div>
+                <label style="font-weight: normal;">Derived Faction Standing</label>
+                <input type="number" id="faction_standing" step="0.01" min="-10" max="10" value="0">
+
+                <label style="font-weight: normal;">Corporation</label>
+                <select id="corp_select" style="width: 300px; text-align-last: center;"></select>
+                <label style="font-weight: normal;">Derived Corp Standing</label>
+                <input type="number" id="corp_standing" step="0.01" min="-10" max="10" value="0">
             </div>
             <div class="eve-col">
-                <div class="output" id="jita_result"></div>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                    <div class="output" id="result_main"></div>
+                    <div class="output" id="result_skills"></div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
+        function getFactionByCorp(corpName) {
+            return corpFactionMap[corpName] || "Caldari State";
+        }
+                const corpList = <?= $corp_json ?>;
+        const corpFactionMap = <?= $corp_faction_json ?>;
+        const factionSkillMap = <?= $faction_skill_json ?>;
+        const corpSkillMap = <?= $corp_skill_json ?>;
+
+        function populateDropdown(id, options) {
+            const select = document.getElementById(id);
+            options.forEach(opt => {
+                const option = document.createElement("option");
+                option.value = opt;
+                option.textContent = opt;
+                select.appendChild(option);
+            });
+        }
+
+                populateDropdown("corp_select", corpList);
+        const initialCorp = document.getElementById('corp_select').value;
+        document.getElementById('faction_display').textContent = getFactionByCorp(initialCorp);
+        document.getElementById("corp_select").addEventListener("change", () => {
+            const corpName = document.getElementById('corp_select').value;
+            const factionName = getFactionByCorp(corpName);
+            document.getElementById('faction_display').textContent = factionName;
+            updateResults();
+        });
+
         function safeParse(val) {
             const parsed = parseFloat(val);
             return isNaN(parsed) ? 0 : parsed;
         }
 
-        function applyDiplomacy(standing, diplo) {
-            return standing < 0
-                ? standing + ((10 - standing) * 0.04 * diplo)
-                : standing;
+        function applyEffectiveStanding(standing, skillType, connSkill, crimSkill, diploSkill) {
+            if (standing < 0) {
+                return standing + ((10 - standing) * 0.04 * diploSkill);
+            } else {
+                const skillLevel = (skillType === "Criminal Connections") ? crimSkill : connSkill;
+                return standing + ((10 - standing) * 0.04 * skillLevel);
+            }
         }
 
         function calcBrokerFee(skill, faction, corp) {
@@ -107,30 +181,41 @@ function eve_standings_calculator_shortcode() {
             return Math.max(0, 5 * (1 - (effective / 6.67)));
         }
 
-        function renderHubResult(faction, corp, brokerSkill, diploSkill) {
-            const factionAdj = applyDiplomacy(faction, diploSkill);
-            const corpAdj = applyDiplomacy(corp, diploSkill);
-            const broker = calcBrokerFee(brokerSkill, factionAdj, corpAdj).toFixed(2);
-            const reprocessing = calcReprocessingTax(Math.max(factionAdj, corpAdj)).toFixed(2);
-            return `Broker Fee: <strong>${broker}%</strong><br>Reprocessing Tax: <strong>${reprocessing}%</strong>`;
-        }
-
         function updateResults() {
             const brokerSkill = safeParse(document.getElementById('broker_skill').value);
-            const diplomacySkill = safeParse(document.getElementById('diplomacy_skill').value);
+            const connSkill = safeParse(document.getElementById('connections_skill').value);
+            const crimSkill = safeParse(document.getElementById('criminal_connections_skill').value);
+            const diploSkill = safeParse(document.getElementById('diplomacy_skill').value);
+            const factionStanding = safeParse(document.getElementById('faction_standing').value);
+            const corpStanding = safeParse(document.getElementById('corp_standing').value);
+            const corpName = document.getElementById('corp_select').value;
+            const factionName = getFactionByCorp(corpName);
+            document.getElementById('faction_display').textContent = factionName;
 
-            const faction = safeParse(document.getElementById('jita_faction').value);
-            const corp = safeParse(document.getElementById('jita_corp').value);
-            const resultText = renderHubResult(faction, corp, brokerSkill, diplomacySkill);
-            document.getElementById('jita_result').innerHTML = resultText;
+            const factionSkill = factionSkillMap[factionName] || "Connections";
+            const corpSkill = corpSkillMap[corpName] || "Connections";
+
+            const factionAdj = applyEffectiveStanding(factionStanding, factionSkill, connSkill, crimSkill, diploSkill);
+            const corpAdj = applyEffectiveStanding(corpStanding, corpSkill, connSkill, crimSkill, diploSkill);
+
+            const broker = calcBrokerFee(brokerSkill, factionAdj, corpAdj).toFixed(2);
+            const reprocessing = calcReprocessingTax(Math.max(factionAdj, corpAdj)).toFixed(2);
+
+            const skillUsedFaction = (factionStanding < 0) ? "Diplomacy" : factionSkill;
+            const skillUsedCorp = (corpStanding < 0) ? "Diplomacy" : corpSkill;
+
+            document.getElementById('result_main').innerHTML = `
+                <strong>Brokerage Fee:</strong> ${broker}%<br>
+                <strong>Reprocessing Tax:</strong> ${reprocessing}%
+            `;
+            document.getElementById('result_skills').innerHTML = `
+                <strong>Skill Used (Faction)</strong><br><i>${skillUsedFaction}</i><br>
+                <strong>Skill Used (Corp)</strong><br><i>${skillUsedCorp}</i>
+            `;
         }
 
-        document.addEventListener('input', function(e) {
-            if (e.target.closest('.eve-standings-form')) {
-                updateResults();
-            }
-        });
-
+        document.addEventListener('input', updateResults);
+        document.addEventListener('change', updateResults);
         document.addEventListener('DOMContentLoaded', updateResults);
     </script>
 
