@@ -2,14 +2,13 @@
 /*
 Plugin Name: EVE Standings Calculator
 Description: Adds a shortcode [eve_standings_calculator] to calculate broker fees and reprocessing tax using standing + skill logic.
-Version: 2
+Version: 2.1
 Author: C4813
 */
 
 function eve_standings_calculator_shortcode() {
-    $faction_json = file_get_contents(__DIR__ . '/factions.json');
-    $corp_faction_json = file_get_contents(__DIR__ . '/corp_to_faction.json');
     $corp_json = file_get_contents(__DIR__ . '/corps.json');
+    $corp_faction_json = file_get_contents(__DIR__ . '/corp_to_faction.json');
     $faction_skill_json = file_get_contents(__DIR__ . '/faction_skills.json');
     $corp_skill_json = file_get_contents(__DIR__ . '/corp_skills.json');
 
@@ -24,16 +23,18 @@ function eve_standings_calculator_shortcode() {
             border-radius: 8px;
         }
         .eve-standings-form label {
-        display: block;
-        margin-top: 10px;
-        text-align: center;
-    }
+            display: block;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: normal;
+        }
         .eve-standings-form select,
         .eve-standings-form input[type="number"] {
             width: 200px;
             padding: 6px;
             margin: 4px auto 0 auto;
             display: block;
+            text-align-last: center;
         }
         .eve-row {
             display: grid;
@@ -61,45 +62,16 @@ function eve_standings_calculator_shortcode() {
         <div class="eve-row">
             <div class="eve-col">
                 <label style="font-size: 18px; font-weight: bold; margin-bottom: 4px;">Skills</label>
-                <label style="font-weight: normal;">Broker Relations</label>
-                <select id="broker_skill" style="text-align-last: center;">
-                    <option value="0">0</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                </select>
-
-                <label style="font-weight: normal;">Connections</label>
-                <select id="connections_skill" style="text-align-last: center;">
-                    <option value="0">0</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                </select>
-
-                <label style="font-weight: normal;">Criminal Connections</label>
-                <select id="criminal_connections_skill" style="text-align-last: center;">
-                    <option value="0">0</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                </select>
-
-                <label style="font-weight: normal;">Diplomacy</label>
-                <select id="diplomacy_skill" style="text-align-last: center;">
-                    <option value="0">0</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                </select>
+                <?php
+                $skills = ['broker_skill' => 'Broker Relations', 'connections_skill' => 'Connections', 'criminal_connections_skill' => 'Criminal Connections', 'diplomacy_skill' => 'Diplomacy'];
+                foreach ($skills as $id => $label) {
+                    echo "<label>{$label}</label><select id=\"{$id}\">";
+                    for ($i = 0; $i <= 5; $i++) {
+                        echo "<option value=\"$i\">$i</option>";
+                    }
+                    echo "</select>";
+                }
+                ?>
             </div>
             <div class="eve-col">
                 <div class="output" style="font-size: 18px; font-weight: bold; margin-bottom: 4px;">Market Standings &<br /> Reprocessing Tax Calculator</div>
@@ -111,15 +83,17 @@ function eve_standings_calculator_shortcode() {
         <div class="eve-row" style="margin-top: 20px;">
             <div class="eve-col">
                 <label style="font-size: 18px; font-weight: bold; margin-bottom: 4px;">Standings</label>
-                <label style="font-weight: normal;">Faction</label>
-                    <div id="faction_display" class="output"></div>
-                <label style="font-weight: normal;">Derived Faction Standing</label>
+                <label>Faction</label>
+                <div id="faction_display" class="output"></div>
+                <label><strong>Base</strong> Faction Standing</label>
                 <input type="number" id="faction_standing" step="0.01" min="-10" max="10" value="0">
+                <div style="margin-top: 4px;"><i>Effective: <span id="derived_faction_standing">0.00</span></i></div>
 
-                <label style="font-weight: normal;">Corporation</label>
-                <select id="corp_select" style="width: 300px; text-align-last: center;"></select>
-                <label style="font-weight: normal;">Derived Corp Standing</label>
+                <label>Corporation</label>
+                <select id="corp_select" style="width: 300px;"></select>
+                <label><strong>Base</strong> Corp Standing</label>
                 <input type="number" id="corp_standing" step="0.01" min="-10" max="10" value="0">
+                <div style="margin-top: 4px;"><i>Effective: <span id="derived_corp_standing">0.00</span></i></div>
             </div>
             <div class="eve-col">
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
@@ -131,13 +105,14 @@ function eve_standings_calculator_shortcode() {
     </div>
 
     <script>
-        function getFactionByCorp(corpName) {
-            return corpFactionMap[corpName] || "Caldari State";
-        }
-                const corpList = <?= $corp_json ?>;
+        const corpList = <?= $corp_json ?>;
         const corpFactionMap = <?= $corp_faction_json ?>;
         const factionSkillMap = <?= $faction_skill_json ?>;
         const corpSkillMap = <?= $corp_skill_json ?>;
+
+        function getFactionByCorp(corpName) {
+            return corpFactionMap[corpName] || "Caldari State";
+        }
 
         function populateDropdown(id, options) {
             const select = document.getElementById(id);
@@ -149,15 +124,7 @@ function eve_standings_calculator_shortcode() {
             });
         }
 
-                populateDropdown("corp_select", corpList);
-        const initialCorp = document.getElementById('corp_select').value;
-        document.getElementById('faction_display').textContent = getFactionByCorp(initialCorp);
-        document.getElementById("corp_select").addEventListener("change", () => {
-            const corpName = document.getElementById('corp_select').value;
-            const factionName = getFactionByCorp(corpName);
-            document.getElementById('faction_display').textContent = factionName;
-            updateResults();
-        });
+        populateDropdown("corp_select", corpList);
 
         function safeParse(val) {
             const parsed = parseFloat(val);
@@ -165,6 +132,7 @@ function eve_standings_calculator_shortcode() {
         }
 
         function applyEffectiveStanding(standing, skillType, connSkill, crimSkill, diploSkill) {
+            if (standing === 0) return 0;
             if (standing < 0) {
                 return standing + ((10 - standing) * 0.04 * diploSkill);
             } else {
@@ -212,11 +180,18 @@ function eve_standings_calculator_shortcode() {
                 <strong>Skill Used (Faction)</strong><br><i>${skillUsedFaction}</i><br>
                 <strong>Skill Used (Corp)</strong><br><i>${skillUsedCorp}</i>
             `;
+
+            document.getElementById('derived_faction_standing').textContent = factionAdj.toFixed(2);
+            document.getElementById('derived_corp_standing').textContent = corpAdj.toFixed(2);
         }
 
         document.addEventListener('input', updateResults);
         document.addEventListener('change', updateResults);
-        document.addEventListener('DOMContentLoaded', updateResults);
+        document.addEventListener('DOMContentLoaded', () => {
+            const initialCorp = document.getElementById('corp_select').value;
+            document.getElementById('faction_display').textContent = getFactionByCorp(initialCorp);
+            updateResults();
+        });
     </script>
 
     <?php
