@@ -2,7 +2,7 @@
 /*
 Plugin Name: EVE Standings Calculator
 Description: Adds a shortcode [eve_standings_calculator] to calculate broker fees and reprocessing tax using standing + skill logic.
-Version: 2.1
+Version: 2.1.1
 Author: C4813
 */
 
@@ -114,17 +114,20 @@ function eve_standings_calculator_shortcode() {
             return corpFactionMap[corpName] || "Caldari State";
         }
 
-        function populateDropdown(id, options) {
+        function populateDropdown(id, options, defaultValue = "") {
             const select = document.getElementById(id);
             options.forEach(opt => {
                 const option = document.createElement("option");
                 option.value = opt;
                 option.textContent = opt;
+                if (opt === defaultValue) {
+                    option.selected = true;
+                }
                 select.appendChild(option);
             });
         }
 
-        populateDropdown("corp_select", corpList);
+        populateDropdown("corp_select", corpList, "Caldari Navy");
 
         function safeParse(val) {
             const parsed = parseFloat(val);
@@ -187,11 +190,7 @@ function eve_standings_calculator_shortcode() {
 
         document.addEventListener('input', updateResults);
         document.addEventListener('change', updateResults);
-        document.addEventListener('DOMContentLoaded', () => {
-            const initialCorp = document.getElementById('corp_select').value;
-            document.getElementById('faction_display').textContent = getFactionByCorp(initialCorp);
-            updateResults();
-        });
+        document.addEventListener('DOMContentLoaded', updateResults);
     </script>
 
     <?php
