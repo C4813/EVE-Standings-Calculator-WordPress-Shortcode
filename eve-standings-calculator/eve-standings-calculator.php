@@ -2,7 +2,7 @@
 /*
 Plugin Name: EVE Standings Calculator
 Description: Adds a shortcode [eve_standings_calculator] to calculate broker fees and reprocessing tax using standing + skill logic.
-Version: 2.1.2
+Version: 2.1.3
 Author: C4813
 */
 
@@ -171,7 +171,7 @@ function eve_standings_calculator_shortcode() {
             const corpAdj = applyEffectiveStanding(corpStanding, corpSkill, connSkill, crimSkill, diploSkill);
 
             const broker = calcBrokerFee(brokerSkill, factionAdj, corpAdj).toFixed(2);
-            const reprocessing = calcReprocessingTax(Math.max(factionAdj, corpAdj)).toFixed(2);
+            const reprocessing = calcReprocessingTax(corpAdj).toFixed(2);
 
             const skillUsedFaction = (factionStanding < 0) ? "Diplomacy" : factionSkill;
             const skillUsedCorp = (corpStanding < 0) ? "Diplomacy" : corpSkill;
