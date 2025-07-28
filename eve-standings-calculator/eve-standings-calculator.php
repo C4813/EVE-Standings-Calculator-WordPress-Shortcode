@@ -2,7 +2,7 @@
 /*
 Plugin Name: EVE Standings Calculator
 Description: Adds a shortcode [eve_standings_calculator] to calculate broker fees and reprocessing tax using standing + skill logic.
-Version: 2.1.1
+Version: 2.1.2
 Author: C4813
 */
 
@@ -67,7 +67,8 @@ function eve_standings_calculator_shortcode() {
                 foreach ($skills as $id => $label) {
                     echo "<label>{$label}</label><select id=\"{$id}\">";
                     for ($i = 0; $i <= 5; $i++) {
-                        echo "<option value=\"$i\">$i</option>";
+                        $selected = ($i === 5) ? 'selected' : '';
+                        echo "<option value=\"$i\" $selected>$i</option>";
                     }
                     echo "</select>";
                 }
