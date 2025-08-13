@@ -2,7 +2,7 @@
 /*
 Plugin Name: EVE Standings Calculator
 Description: Adds a shortcode [eve_standings_calculator] to calculate broker fees and reprocessing tax using standing + skill logic.
-Version: 2.2.0
+Version: 2.2.1
 Author: C4813
 */
 
@@ -61,10 +61,10 @@ add_shortcode('eve_standings_calculator', function () {
     $handle_css = 'ecs-standings-style';
 
     // Enqueue empty handles
-    wp_register_script($handle_js, false, array(), '2.3.0', true);
+    wp_register_script($handle_js, false, array(), '2.3.1', true);
     wp_enqueue_script($handle_js);
 
-    wp_register_style($handle_css, false, array(), '2.3.0');
+    wp_register_style($handle_css, false, array(), '2.3.1');
     wp_enqueue_style($handle_css);
 
     // Pass data to JS safely (before script so it's available)
@@ -88,8 +88,7 @@ add_shortcode('eve_standings_calculator', function () {
     $css = <<<CSS
 .eve-standings-form{max-width:800px;margin:0 auto;padding:20px;border:1px solid #ccc;border-radius:8px}
 .eve-standings-form label{display:block;margin-top:10px;text-align:center;font-weight:400}
-.eve-standings-form select,.eve-standings-form input[type="number"]{width:200px;padding:6px;margin:4px auto 0 auto;display:block;text-align-last:center}
-.eve-row{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:20px}
+.eve-standings-form select, .eve-standings-form input[type="number"], .eve-standings-form input[type="text"]{width:240px;padding:6px;margin:4px auto 0 auto;display:block;text-align-last:center}.eve-row{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:20px}
 .eve-col{text-align:center}
 .eve-col .output{padding:12px;background:#f9f9f9;border-radius:6px;border:1px solid #ddd;display:inline-block}
 .divider{margin-top:30px;border-top:1px solid #ccc}
@@ -173,11 +172,7 @@ CSS;
 
         let factionStanding = clamp(safeParse(factionInput.value), -10, 10);
         let corpStanding    = clamp(safeParse(corpInput.value),    -10, 10);
-
-        factionInput.value = factionStanding;
-        corpInput.value    = corpStanding;
-
-        // Resolve corp -> faction and skills
+// Resolve corp -> faction and skills
         const corpName    = (document.getElementById('corp_select').value || '').trim();
         const factionName = getFactionByCorp(corpName);
         setText('faction_display', factionName);
@@ -206,8 +201,52 @@ CSS;
         setText('derived_corp_standing',    corpAdj.toFixed(2));
     }
 
-    function init() {
-        populateDropdown('corp_select', DATA.corps, (DATA.defaults && DATA.defaults.defaultCorp) || 'Caldari Navy');
+    function attachStandingFieldBehavior(el) {
+  if (!el) return;
+  const min = parseFloat(el.dataset.min ?? -10);
+  const max = parseFloat(el.dataset.max ?? 10);
+
+  // Select all content on focus/click
+  el.addEventListener('focus', (e) => e.target.select());
+  el.addEventListener('mouseup', (e) => e.preventDefault());
+
+  // Allow only digits, one leading '-', and one '.' while typing
+  const cleanForTyping = (raw) =>
+    raw
+      .replace(/[^0-9.\-]/g, '')
+      .replace(/(?!^)-/g, '')
+      .replace(/(\..*)\./g, '$1');
+
+  const clamp = (n) => Math.min(Math.max(n, min), max);
+
+  // Format to two decimals on blur/finalize
+  const finalize = (raw) => {
+    const cleaned = cleanForTyping(raw);
+    const n = parseFloat(cleaned);
+    if (!Number.isFinite(n)) return '0.00';
+    return clamp(n).toFixed(2);
+  };
+
+  el.addEventListener('input', (e) => {
+    e.stopPropagation(); // prevent outer listeners from interfering while typing
+    const before = e.target.value;
+    const cleaned = cleanForTyping(before);
+    if (cleaned !== before) e.target.value = cleaned;
+
+    // If value is a valid number (excluding transient '-', '.', '-.'), update results live
+    if (/^-?(?:10(?:\.0{0,2})?|[0-9](?:\.[0-9]{0,2})?)$/.test(cleaned) && cleaned !== '-' && cleaned !== '.' && cleaned !== '-.') {
+      if (typeof updateResults === 'function') updateResults();
+    }
+  });
+
+  el.addEventListener('blur', (e) => {
+    e.target.value = finalize(e.target.value);
+    if (typeof updateResults === 'function') updateResults();
+  });
+}
+function init() { attachStandingFieldBehavior(document.getElementById('faction_standing'));
+ attachStandingFieldBehavior(document.getElementById('corp_standing'));
+populateDropdown('corp_select', DATA.corps, (DATA.defaults && DATA.defaults.defaultCorp) || 'Caldari Navy');
 
         // Scope event listeners to this form, not the whole document
         const form = document.querySelector('.eve-standings-form');
@@ -280,14 +319,14 @@ JS;
                 <div id="faction_display" class="output"></div>
 
                 <label><strong>Base</strong> Faction Standing</label>
-                <input type="number" id="faction_standing" step="0.01" min="-10" max="10" value="0" inputmode="decimal">
+                <input type="text" id="faction_standing" value="0.00" inputmode="decimal" autocomplete="off" data-min="-10" data-max="10" pattern="^-?(?:10(?:\.0{1,2})?|[0-9](?:\.[0-9]{0,2})?)$" style="width:80px">
                 <div style="margin-top:4px;"><i>Effective: <span id="derived_faction_standing">0.00</span></i></div>
 
                 <label>Corporation</label>
                 <select id="corp_select" style="width:300px;"></select>
 
                 <label><strong>Base</strong> Corp Standing</label>
-                <input type="number" id="corp_standing" step="0.01" min="-10" max="10" value="0" inputmode="decimal">
+                <input type="text" id="corp_standing" value="0.00" inputmode="decimal" autocomplete="off" data-min="-10" data-max="10" pattern="^-?(?:10(?:\.0{1,2})?|[0-9](?:\.[0-9]{0,2})?)$" style="width:80px">
                 <div style="margin-top:4px;"><i>Effective: <span id="derived_corp_standing">0.00</span></i></div>
             </div>
 
